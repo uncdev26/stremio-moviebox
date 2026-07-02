@@ -84,7 +84,14 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
 
     config = parse_config(config_str)
     min_res = config.get("resolution", "all")
-    pref_lang = config.get("language", "all")
+    # Support both old "language" string and new "languages" array
+    pref_langs = config.get("languages", [config.get("language", "all")])
+    if isinstance(pref_langs, str):
+        pref_langs = [pref_langs]
+    pref_countries = config.get("countries", ["All"])
+    if isinstance(pref_countries, str):
+        pref_countries = [pref_countries]
+    pref_genre = config.get("genre", "All")
     layout = config.get("layout", "cinematic")
 
     # Map language codes to names for matching
@@ -95,7 +102,8 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
         "tr": "turkish", "th": "thai", "pl": "polish", "nl": "dutch",
         "sv": "swedish", "ta": "tamil", "te": "telugu", "ml": "malayalam",
     }
-    pref_lang_name = LANG_MAP.get(pref_lang, pref_lang)
+    pref_lang_names = [LANG_MAP.get(l, l) for l in pref_langs]
+    all_langs = "all" in pref_langs
 
     # Platform-aware speed optimization
     platform = detect_platform(request)
@@ -138,19 +146,25 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
         matches, type == "movie", season, episode
     )
 
+    def lang_matches(audio_lang):
+        """Check if audio_lang matches any of the preferred languages."""
+        if not audio_lang:
+            return "orig" in pref_langs
+        al = audio_lang.lower()
+        for lp in pref_lang_names:
+            if lp in al:
+                return True
+        for lp in pref_langs:
+            if lp != "all" and lp != "orig" and lp in al:
+                return True
+        return False
+
     def sort_key(x):
         res = getattr(x["download"], "resolution", 0)
         lang_match = 0
         audio_lang = x.get("audio_lang")
-        if pref_lang != "all":
-            if pref_lang == "orig" and not audio_lang:
-                lang_match = 1
-            elif (
-                pref_lang != "orig"
-                and audio_lang
-                and (pref_lang_name.lower() in audio_lang.lower()
-                     or pref_lang.lower() in audio_lang.lower())
-            ):
+        if not all_langs:
+            if lang_matches(audio_lang):
                 lang_match = 1
         return (lang_match, res)
 
@@ -180,12 +194,9 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
         elif min_res == "720p" and resolution < 720:
             continue
 
-        if pref_lang != "all":
-            if pref_lang == "orig" and audio_lang:
+        if not all_langs:
+            if not lang_matches(audio_lang):
                 continue
-            elif pref_lang != "orig":
-                if not audio_lang or pref_lang.lower() not in audio_lang.lower():
-                    continue
 
         filename = get_stream_filename(url_str)
         audio_langs_display = [audio_lang] if audio_lang else None
