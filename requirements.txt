@@ -1,0 +1,6 @@
+bs4>=0.0.2
+httpx[socks]>=0.28.1
+pydantic>=2.11.7
+fastapi>=0.104.1
+uvicorn>=0.24.0
+pydantic-settings>=2.14.2

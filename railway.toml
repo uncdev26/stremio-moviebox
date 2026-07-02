@@ -1,7 +1,0 @@
-[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "python -m server.main"
-healthcheckPath = "/health"
-restartPolicyType = "ON_FAILURE"
