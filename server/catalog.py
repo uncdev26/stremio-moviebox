@@ -1,6 +1,7 @@
-"""Catalog endpoints using TMDB Discover API for country/genre browsing."""
+"""Catalog endpoints using MovieBox's own genreTopId catalog system."""
 
-import re
+import json
+import base64
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -8,63 +9,24 @@ router = APIRouter()
 
 TMDB_API_KEY = "e779f44db85aedbffe2dfcf252b372dc"
 
-# Country name → ISO code mapping
-COUNTRY_CODES = {
-    "United States": "US", "United Kingdom": "GB", "France": "FR",
-    "Germany": "DE", "Italy": "IT", "Spain": "ES", "Russia": "RU",
-    "India": "IN", "Japan": "JP", "Korea": "KR", "China": "CN",
-    "Thailand": "TH", "Indonesia": "ID", "Philippines": "PH",
-    "Pakistan": "PK", "Bangladesh": "BD", "Malaysia": "MY",
-    "Egypt": "EG", "Saudi Arabia": "SA", "Nigeria": "NG",
-    "South Africa": "ZA", "Kenya": "KE", "Morocco": "MA",
-    "Iraq": "IQ", "Lebanon": "LB", "Syria": "SY", "Mexico": "MX",
-    "Ivory Coast": "CI",
+# MovieBox's catalog sections mapped from homepage
+MOVIEBOX_CATALOGS = {
+    "trending":    {"name": "🔥 Trending",        "genreTopId": "4516404531735022304", "type": "movie"},
+    "cinema":      {"name": "🎬 Cinema",           "genreTopId": "5692654647815587592", "type": "movie"},
+    "hollywood":   {"name": "🇺🇸 Hollywood",       "genreTopId": "8019599703232971616", "type": "movie"},
+    "bollywood":   {"name": "🇮🇳 Bollywood",       "genreTopId": "414907768299210008",  "type": "movie"},
+    "south_indian":{"name": "🇮🇳 South Indian",    "genreTopId": "3859721901924910512", "type": "movie"},
+    "asian":       {"name": "🌏 Asian",            "genreTopId": "5429170738815291968", "type": "movie"},
+    "turkish":     {"name": "🇹🇷 Turkish Drama",   "genreTopId": "5177200225164885656", "type": "movie"},
+    "indian_drama":{"name": "🇮🇳 Indian Drama",    "genreTopId": "4903182713986896328", "type": "series"},
+    "top_series":  {"name": "📺 Top Series",       "genreTopId": "4741626294545400336", "type": "series"},
+    "asian_series":{"name": "🌏 Asian Series",     "genreTopId": "1976033493293449744", "type": "series"},
+    "western_tv":  {"name": "🇺🇸 Western TV",      "genreTopId": "3910636007619709856", "type": "series"},
+    "anime":       {"name": "🎌 Anime",            "genreTopId": "8434602210994128512", "type": "series"},
 }
-
-# Genre name → TMDB genre ID
-GENRE_IDS = {
-    "Action": 28, "Adventure": 12, "Animation": 16, "Comedy": 35,
-    "Crime": 80, "Documentary": 99, "Drama": 18, "Family": 10751,
-    "Fantasy": 14, "History": 36, "Horror": 27, "Music": 10402,
-    "Mystery": 9648, "Romance": 10749, "Science Fiction": 878,
-    "Thriller": 53, "War": 10752, "Western": 37,
-}
-
-
-async def fetch_tmdb_discover(
-    http_client, type_: str, countries: list, genre: str, page: int = 1
-):
-    """Fetch content from TMDB Discover API."""
-    params = {
-        "api_key": TMDB_API_KEY,
-        "sort_by": "popularity.desc",
-        "page": page,
-        "language": "en-US",
-    }
-
-    # Add country filter
-    if countries and "All" not in countries:
-        codes = [COUNTRY_CODES.get(c, c) for c in countries]
-        params["with_origin_country"] = "|".join(codes)
-
-    # Add genre filter
-    if genre and genre != "All":
-        genre_id = GENRE_IDS.get(genre)
-        if genre_id:
-            params["with_genres"] = genre_id
-
-    url = f"https://api.themoviedb.org/3/discover/{type_}"
-    try:
-        resp = await http_client.get(url, params=params, timeout=10)
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-    return {"results": []}
 
 
 def parse_config(config_str: str) -> dict:
-    import base64, json
     try:
         padding = 4 - (len(config_str) % 4)
         if padding != 4:
@@ -75,54 +37,156 @@ def parse_config(config_str: str) -> dict:
         return {}
 
 
-@router.get("/{config}/catalog/{type}/{id}.json")
-async def catalog_with_config(request: Request, config: str, type: str, id: str):
-    return await handle_catalog(request, type, id, config)
+async def fetch_moviebox_catalog(genre_top_id: str, page: int = 1, per_page: int = 20):
+    """Fetch catalog from MovieBox's ContentCategory API."""
+    import sys
+    sys.path.insert(0, '.')
+    from moviebox.web.core import ContentCategory
+    from moviebox.web.requests import Session
+
+    try:
+        s = Session()
+        cat = ContentCategory(
+            genre_top_id=genre_top_id,
+            session=s,
+            per_page=per_page,
+            page=page,
+        )
+        res = await cat.get_content_model()
+        items = []
+        for item in res.items:
+            detail_path = getattr(item, 'detailPath', '')
+            name = getattr(item, 'name', '') or detail_path.replace('-', ' ').title()
+            date = getattr(item, 'releaseDate', None)
+            year = str(date.year) if date and hasattr(date, 'year') else ''
+            subject_id = getattr(item, 'subjectId', '')
+
+            # Extract IMDB ID from detailPath if available
+            # detailPath format: movie-name-xxxxIDxxxx
+            imdb_id = None
+            if detail_path:
+                # Try to get IMDB ID via TMDB search using name+year
+                pass
+
+            items.append({
+                "name": name,
+                "detailPath": detail_path,
+                "subjectId": str(subject_id),
+                "year": year,
+            })
+        return items
+    except Exception as e:
+        return []
 
 
-@router.get("/catalog/{type}/{id}.json")
-async def catalog_no_config(request: Request, type: str, id: str):
-    return await handle_catalog(request, type, id, "")
+async def resolve_to_imdb(http_client, name: str, year: str) -> str | None:
+    """Resolve a movie name to IMDB ID via TMDB search."""
+    try:
+        resp = await http_client.get(
+            "https://api.themoviedb.org/3/search/movie",
+            params={
+                "api_key": TMDB_API_KEY,
+                "query": name,
+                "year": year,
+            },
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if results:
+                tmdb_id = results[0]["id"]
+                # Get IMDB ID
+                ext = await http_client.get(
+                    f"https://api.themoviedb.org/3/movie/{tmdb_id}/external_ids",
+                    params={"api_key": TMDB_API_KEY},
+                    timeout=8,
+                )
+                if ext.status_code == 200:
+                    return ext.json().get("imdb_id")
+    except Exception:
+        pass
+    return None
 
 
-async def handle_catalog(request: Request, type: str, id: str, config_str: str):
-    """Return catalog of movies/shows based on country/genre config."""
+# ─── Catalog routes ───────────────────────────────────────────
+
+@router.get("/{config}/catalog/{type}/{catalog_id}.json")
+async def catalog_with_config(request: Request, config: str, type: str, catalog_id: str):
+    return await handle_catalog(request, type, catalog_id, config)
+
+
+@router.get("/catalog/{type}/{catalog_id}.json")
+async def catalog_no_config(request: Request, type: str, catalog_id: str):
+    return await handle_catalog(request, type, catalog_id, "")
+
+
+async def handle_catalog(request: Request, type: str, catalog_id: str, config_str: str):
+    """Return catalog of movies/shows from MovieBox."""
     config = parse_config(config_str)
 
-    countries = config.get("countries", ["All"])
-    if isinstance(countries, str):
-        countries = [countries]
+    # Parse skip for pagination
+    skip = int(request.query_params.get("skip", "0"))
+    page = (skip // 20) + 1
+
+    # Determine which MovieBox catalog to use
+    # catalog_id format: "moviebox_{section}" or just "{section}"
+    section = catalog_id.replace("moviebox_", "").replace("_catalog", "")
+
+    # Map genre from config to catalog section
     genre = config.get("genre", "All")
+    countries = config.get("countries", ["All"])
 
-    # Get page from extra params
-    page = int(request.query_params.get("page", "1"))
-
-    data = await fetch_tmdb_discover(
-        request.app.state.http_client, type, countries, genre, page
-    )
-
-    metas = []
-    for item in data.get("results", []):
-        tmdb_id = item.get("id")
-        title = item.get("title") or item.get("name", "")
-        year = (item.get("release_date") or item.get("first_air_date") or "")[:4]
-        overview = item.get("overview", "")
-        poster_path = item.get("poster_path")
-        backdrop_path = item.get("backdrop_path")
-        vote = item.get("vote_average", 0)
-
-        # We need IMDB ID for Stremio — use tmdb: prefix
-        meta_id = f"tmdb:{tmdb_id}"
-
-        meta = {
-            "id": meta_id,
-            "type": type,
-            "name": title,
-            "releaseInfo": year,
-            "poster": f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None,
-            "background": f"https://image.tmdb.org/t/p/original{backdrop_path}" if backdrop_path else None,
-            "description": overview[:300] if overview else "",
+    # Pick the best catalog section based on config
+    if section in MOVIEBOX_CATALOGS:
+        catalog_info = MOVIEBOX_CATALOGS[section]
+    elif genre and genre != "All":
+        # Use trending as default, genre filtering is done client-side
+        catalog_info = MOVIEBOX_CATALOGS["trending"]
+    elif countries and "All" not in countries:
+        # Try to match country to catalog
+        country_catalogs = {
+            "India": "bollywood", "Japan": "anime", "Korea": "asian",
+            "Turkey": "turkish", "United States": "hollywood",
         }
-        metas.append(meta)
+        matched = None
+        for c in countries:
+            if c in country_catalogs:
+                matched = country_catalogs[c]
+                break
+        catalog_info = MOVIEBOX_CATALOGS.get(matched, MOVIEBOX_CATALOGS["trending"])
+    else:
+        catalog_info = MOVIEBOX_CATALOGS["trending"]
 
-    return JSONResponse({"metas": metas, "cacheMaxAge": 3600})
+    # Fetch from MovieBox
+    items = await fetch_moviebox_catalog(catalog_info["genreTopId"], page=page)
+
+    # Build Stremio metas
+    metas = []
+    http_client = request.app.state.http_client
+
+    for item in items:
+        name = item["name"]
+        year = item["year"]
+        detail_path = item["detailPath"]
+
+        # Get IMDB ID for Stremio
+        imdb_id = await resolve_to_imdb(http_client, name, year)
+        if not imdb_id:
+            continue
+
+        # Get poster from TMDB
+        poster_url = f"https://api.ratingposterdb.com/t0-free-rpdb/imdb/poster-default/{imdb_id}.jpg"
+
+        metas.append({
+            "id": imdb_id,
+            "type": type,
+            "name": name,
+            "releaseInfo": year,
+            "poster": poster_url,
+            "description": f"From MovieBox — {catalog_info['name']}",
+        })
+
+    return JSONResponse({
+        "metas": metas,
+        "cacheMaxAge": 1800,
+    })
