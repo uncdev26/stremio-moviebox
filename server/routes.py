@@ -87,6 +87,16 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
     pref_lang = config.get("language", "all")
     layout = config.get("layout", "cinematic")
 
+    # Map language codes to names for matching
+    LANG_MAP = {
+        "en": "english", "hi": "hindi", "es": "spanish", "fr": "french",
+        "de": "german", "it": "italian", "pt": "portuguese", "ru": "russian",
+        "ja": "japanese", "ko": "korean", "zh": "chinese", "ar": "arabic",
+        "tr": "turkish", "th": "thai", "pl": "polish", "nl": "dutch",
+        "sv": "swedish", "ta": "tamil", "te": "telugu", "ml": "malayalam",
+    }
+    pref_lang_name = LANG_MAP.get(pref_lang, pref_lang)
+
     # Platform-aware speed optimization
     platform = detect_platform(request)
     # Config can override auto-detection
@@ -138,7 +148,8 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
             elif (
                 pref_lang != "orig"
                 and audio_lang
-                and pref_lang.lower() in audio_lang.lower()
+                and (pref_lang_name.lower() in audio_lang.lower()
+                     or pref_lang.lower() in audio_lang.lower())
             ):
                 lang_match = 1
         return (lang_match, res)
