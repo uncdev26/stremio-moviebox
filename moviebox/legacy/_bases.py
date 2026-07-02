@@ -1,4 +1,5 @@
 """
+from __future__ import annotations
 This module contains base classes for the entire package
 """
 
