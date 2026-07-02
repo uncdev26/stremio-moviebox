@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """
 
     PORT: int = 8000
-    HOST: str = "127.0.0.1"
+    HOST: str = "0.0.0.0"
 
     CACHE_TTL: int = 3600
     REQUEST_TIMEOUT: int = 15
