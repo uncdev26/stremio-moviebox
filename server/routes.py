@@ -41,55 +41,6 @@ async def meta_endpoint(request: Request, type: str, id: str):
         if not tmdb_id:
             return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
 
-        tmdb_type = "tv" if type == "series" else "movie"
-        async with _httpx.AsyncClient(timeout=_httpx.Timeout(10), follow_redirects=True) as c:
-            r = await c.get(f"https://api.themoviedb.org/3/{tmdb_type}/{tmdb_id}",
-                params={"api_key": TMDB_KEY, "language": "en-US"}, timeout=8)
-            if r.status_code == 200:
-                d = r.json()
-                title = d.get("title") or d.get("name", "")
-                year = (d.get("release_date") or d.get("first_air_date") or "")[:4]
-                poster = d.get("poster_path")
-                backdrop = d.get("backdrop_path")
-                return JSONResponse({"meta": {
-                    "id": id, "type": type, "name": title, "releaseInfo": year,
-                    "poster": f"https://image.tmdb.org/t/p/w500{poster}" if poster else None,
-                    "background": f"https://image.tmdb.org/t/p/original{backdrop}" if backdrop else None,
-                    "description": (d.get("overview") or "")[:500],
-                    "genres": [g["name"] for g in d.get("genres", [])],
-                    "imdbRating": str(round(d.get("vote_average", 0), 1)) if d.get("vote_average") else None,
-                }})
-    except Exception as e:
-        print(f"[Meta] Error: {e}")
-    return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
-
-            tmdb_type = "tv" if type == "series" else "movie"
-            r = await client.get(f"https://api.themoviedb.org/3/{tmdb_type}/{tmdb_id}",
-                params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "language": "en-US"},
-                timeout=8)
-            if r.status_code == 200:
-                d = r.json()
-                title = d.get("title") or d.get("name", "")
-                year = (d.get("release_date") or d.get("first_air_date") or "")[:4]
-                overview = d.get("overview", "")
-                poster = d.get("poster_path")
-                backdrop = d.get("backdrop_path")
-                genres = [g["name"] for g in d.get("genres", [])]
-                rating = d.get("vote_average")
-
-                return JSONResponse({"meta": {
-                    "id": id, "type": type, "name": title, "releaseInfo": year,
-                    "poster": f"https://image.tmdb.org/t/p/w500{poster}" if poster else None,
-                    "background": f"https://image.tmdb.org/t/p/original{backdrop}" if backdrop else None,
-                    "description": overview[:500] if overview else "",
-                    "genres": genres,
-                    "imdbRating": str(round(rating, 1)) if rating else None,
-                }})
-    except Exception as e:
-        print(f"[Meta] Error: {e}")
-
-    return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
-
 @router.get("/{config}/manifest.json")
 async def manifest_endpoint(request: Request, config: str) -> Manifest:
     manifest = get_manifest()
