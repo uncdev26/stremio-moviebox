@@ -1,26 +1,35 @@
-"""Catalog endpoints using MovieBox's own genreTopId catalog system."""
+"""Catalog endpoints using MovieBox's own ranking-list API directly."""
 
 import json
 import base64
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
+TMDB_API_KEY = "e779f44db85aedbffe2dfcf252b372dc"
+MOVIEBOX_API = "https://h5-api.aoneroom.com/wefeed-h5api-bff/ranking-list/content"
+
 # MovieBox's catalog sections mapped from homepage
 MOVIEBOX_CATALOGS = {
-    "trending":     {"name": "🔥 Trending",        "genreTopId": "4516404531735022304", "type": "movie"},
+    "trending":     {"name": "🔥 Trending Now",    "genreTopId": "4516404531735022304", "type": "movie"},
     "cinema":       {"name": "🎬 Cinema",           "genreTopId": "5692654647815587592", "type": "movie"},
     "hollywood":    {"name": "🇺🇸 Hollywood",       "genreTopId": "8019599703232971616", "type": "movie"},
     "bollywood":    {"name": "🇮🇳 Bollywood",       "genreTopId": "414907768299210008",  "type": "movie"},
     "south_indian": {"name": "🇮🇳 South Indian",    "genreTopId": "3859721901924910512", "type": "movie"},
-    "asian":        {"name": "🌏 Asian",            "genreTopId": "5429170738815291968", "type": "movie"},
+    "asian":        {"name": "🌏 Asian Movies",     "genreTopId": "5429170738815291968", "type": "movie"},
     "turkish":      {"name": "🇹🇷 Turkish Drama",   "genreTopId": "5177200225164885656", "type": "movie"},
     "indian_drama": {"name": "🇮🇳 Indian Drama",    "genreTopId": "4903182713986896328", "type": "series"},
     "top_series":   {"name": "📺 Top Series",       "genreTopId": "4741626294545400336", "type": "series"},
     "asian_series": {"name": "🌏 Asian Series",     "genreTopId": "1976033493293449744", "type": "series"},
     "western_tv":   {"name": "🇺🇸 Western TV",      "genreTopId": "3910636007619709856", "type": "series"},
     "anime":        {"name": "🎌 Anime",            "genreTopId": "8434602210994128512", "type": "series"},
+}
+
+HEADERS = {
+    "Referer": "https://h5.aoneroom.com/",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 }
 
 
@@ -35,54 +44,37 @@ def parse_config(config_str: str) -> dict:
         return {}
 
 
-async def fetch_moviebox_catalog(request: Request, genre_top_id: str, page: int = 1):
-    """Fetch catalog from MovieBox's ContentCategory API using the app's httpx client."""
-    from moviebox.web.core import ContentCategory
-    from moviebox.web.requests import Session
-
+async def fetch_moviebox_page(http_client: httpx.AsyncClient, genre_top_id: str, page: int = 1, per_page: int = 20):
+    """Fetch a page of content from MovieBox's ranking-list API."""
     try:
-        # Create a session that uses our httpx client
-        s = Session()
-        cat = ContentCategory(
-            genre_top_id=genre_top_id,
-            session=s,
-            per_page=20,
-            page=page,
+        resp = await http_client.get(
+            MOVIEBOX_API,
+            params={"id": genre_top_id, "page": page, "perPage": per_page},
+            headers=HEADERS,
+            timeout=12,
         )
-        res = await cat.get_content_model()
-        items = []
-        for item in res.items:
-            detail_path = getattr(item, 'detailPath', '') or ''
-            name = getattr(item, 'name', '') or detail_path.replace('-', ' ').title()
-            date = getattr(item, 'releaseDate', None)
-            year = str(date.year) if date and hasattr(date, 'year') else ''
-            subject_id = str(getattr(item, 'subjectId', ''))
-
-            # Clean up name - remove language suffixes
-            for suffix in [' hindi', ' tamil', ' telugu', ' spanish', ' french', ' german', ' arabic', ' dubbed']:
-                if name.lower().endswith(suffix):
-                    name = name[:-(len(suffix))]
-
-            items.append({
-                "name": name.strip().title(),
-                "detailPath": detail_path,
-                "subjectId": subject_id,
-                "year": year,
-            })
-        return items
+        if resp.status_code == 200:
+            data = resp.json().get("data", {})
+            subjects = data.get("subjectList", [])
+            pager = data.get("pager", {})
+            return subjects, pager
     except Exception as e:
-        print(f"[Catalog] Error: {e}")
-        return []
+        print(f"[Catalog] MovieBox API error: {e}")
+    return [], {}
 
 
-async def resolve_name_to_imdb(http_client, name: str, year: str) -> str | None:
-    """Resolve movie name to IMDB ID via TMDB."""
+async def resolve_to_imdb(http_client: httpx.AsyncClient, title: str, year: str) -> str | None:
+    """Resolve a movie/show title to IMDB ID via TMDB."""
     try:
-        # Clean name for search
-        clean = name.strip()
+        # Clean title
+        clean = title.strip()
+        if not clean:
+            return None
+
+        # Search TMDB
         resp = await http_client.get(
             "https://api.themoviedb.org/3/search/movie",
-            params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "query": clean, "year": year},
+            params={"api_key": TMDB_API_KEY, "query": clean, "year": year},
             timeout=8,
         )
         if resp.status_code == 200:
@@ -91,17 +83,18 @@ async def resolve_name_to_imdb(http_client, name: str, year: str) -> str | None:
                 tmdb_id = results[0]["id"]
                 ext = await http_client.get(
                     f"https://api.themoviedb.org/3/movie/{tmdb_id}/external_ids",
-                    params={"api_key": "e779f44db85aedbffe2dfcf252b372dc"},
+                    params={"api_key": TMDB_API_KEY},
                     timeout=8,
                 )
                 if ext.status_code == 200:
                     imdb = ext.json().get("imdb_id")
                     if imdb:
                         return imdb
-        # Fallback: search without year
+
+        # Fallback: without year
         resp2 = await http_client.get(
             "https://api.themoviedb.org/3/search/movie",
-            params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "query": clean},
+            params={"api_key": TMDB_API_KEY, "query": clean},
             timeout=8,
         )
         if resp2.status_code == 200:
@@ -110,7 +103,7 @@ async def resolve_name_to_imdb(http_client, name: str, year: str) -> str | None:
                 tmdb_id2 = results2[0]["id"]
                 ext2 = await http_client.get(
                     f"https://api.themoviedb.org/3/movie/{tmdb_id2}/external_ids",
-                    params={"api_key": "e779f44db85aedbffe2dfcf252b372dc"},
+                    params={"api_key": TMDB_API_KEY},
                     timeout=8,
                 )
                 if ext2.status_code == 200:
@@ -137,29 +130,47 @@ async def handle_catalog(request: Request, type: str, catalog_id: str, config_st
     skip = int(request.query_params.get("skip", "0"))
     page = (skip // 20) + 1
 
-    section = catalog_id.replace("moviebox_", "").replace("_catalog", "")
-
+    # Parse catalog section
+    section = catalog_id.replace("moviebox_", "")
     catalog_info = MOVIEBOX_CATALOGS.get(section, MOVIEBOX_CATALOGS["trending"])
 
-    items = await fetch_moviebox_catalog(request, catalog_info["genreTopId"], page=page)
-
-    metas = []
     http_client = request.app.state.http_client
 
-    for item in items:
-        imdb_id = await resolve_name_to_imdb(http_client, item["name"], item["year"])
+    # Fetch from MovieBox API
+    subjects, pager = await fetch_moviebox_page(http_client, catalog_info["genreTopId"], page=page)
+
+    if not subjects:
+        return JSONResponse({"metas": [], "cacheMaxAge": 1800})
+
+    # Resolve titles to IMDB IDs
+    metas = []
+    for item in subjects:
+        title = item.get("title", "")
+        release_date = item.get("releaseDate", "")
+        year = release_date[:4] if release_date else ""
+        cover = item.get("cover", "")
+        description = item.get("description", "")
+
+        # Clean title
+        name = title
+        for suffix in [' Hindi', ' Tamil', ' Telugu', ' Spanish', ' French', ' German', ' Arabic', ' Dubbed']:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+
+        imdb_id = await resolve_to_imdb(http_client, name, year)
         if not imdb_id:
             continue
 
-        poster_url = f"https://api.ratingposterdb.com/t0-free-rpdb/imdb/poster-default/{imdb_id}.jpg"
+        poster = f"https://api.ratingposterdb.com/t0-free-rpdb/imdb/poster-default/{imdb_id}.jpg"
 
         metas.append({
             "id": imdb_id,
             "type": type,
-            "name": item["name"],
-            "releaseInfo": item["year"],
-            "poster": poster_url,
-            "description": f"From MovieBox — {catalog_info['name']}",
+            "name": name.strip(),
+            "releaseInfo": year,
+            "poster": poster,
+            "background": cover if cover else None,
+            "description": description[:200] if description else f"From MovieBox — {catalog_info['name']}",
         })
 
     return JSONResponse({"metas": metas, "cacheMaxAge": 1800})
