@@ -174,7 +174,7 @@ async def handle_catalog(request: Request, type: str, catalog_id: str, config_st
             "name": name.strip(),
             "releaseInfo": year,
             "poster": poster,
-            "background": cover if cover else None,
+            "background": cover.get("url") if isinstance(cover, dict) else (cover if isinstance(cover, str) else None),
             "description": description[:200] if description else f"From MovieBox — {catalog_info['name']}",
         })
 
