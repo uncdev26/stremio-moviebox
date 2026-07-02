@@ -1,3 +1,4 @@
+import re
 import base64
 import json
 
@@ -118,8 +119,46 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
     season = 1
     episode = 1
 
+    # Handle mb: prefix IDs from MovieBox catalog
+    if id.startswith("mb:"):
+        mb_subject_id = id.replace("mb:", "")
+        # Resolve MovieBox subjectId → title → IMDB
+        try:
+            mb_resp = await request.app.state.http_client.get(
+                "https://h5-api.aoneroom.com/wefeed-h5api-bff/subject/detail",
+                params={"subjectId": mb_subject_id},
+                headers={"Referer": "https://h5.aoneroom.com/", "User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            if mb_resp.status_code == 200:
+                mb_data = mb_resp.json().get("data", {})
+                mb_title = mb_data.get("title", "")
+                # Clean title
+                import re
+                mb_title = re.sub(r'\s*\[.*?\]\s*', '', mb_title).strip()
+                mb_title = re.sub(r'\s*(Hindi|Tamil|Telugu|Dubbed|CAM)\s*$', '', mb_title, flags=re.I).strip()
+                # Search TMDB
+                tmdb_resp = await request.app.state.http_client.get(
+                    "https://api.themoviedb.org/3/search/movie",
+                    params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "query": mb_title},
+                    timeout=8,
+                )
+                if tmdb_resp.status_code == 200:
+                    results = tmdb_resp.json().get("results", [])
+                    if results:
+                        tid = results[0]["id"]
+                        ext = await request.app.state.http_client.get(
+                            f"https://api.themoviedb.org/3/movie/{tid}/external_ids",
+                            params={"api_key": "e779f44db85aedbffe2dfcf252b372dc"},
+                            timeout=8,
+                        )
+                        if ext.status_code == 200:
+                            imdb_id = ext.json().get("imdb_id", "")
+        except Exception:
+            pass
+
     # Handle tmdb: prefix IDs from catalog
-    if imdb_id.startswith("tmdb:") or (len(parts) > 1 and parts[0] == "tmdb"):
+    elif imdb_id.startswith("tmdb:") or (len(parts) > 1 and parts[0] == "tmdb"):
         tmdb_num = parts[1] if parts[0] == "tmdb" else imdb_id.replace("tmdb:", "")
         try:
             tmdb_type = "tv" if type == "series" else "movie"
@@ -248,3 +287,40 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
         )
 
     return {"streams": streams}
+
+
+# ─── META ENDPOINT ────────────────────────────────────────────
+@router.get("/meta/{type}/{id}.json")
+async def meta_endpoint(request: Request, type: str, id: str):
+    """Return metadata for a single item (used by Stremio for mb: IDs)."""
+    if id.startswith("mb:"):
+        mb_id = id.replace("mb:", "")
+        try:
+            r = await request.app.state.http_client.get(
+                "https://h5-api.aoneroom.com/wefeed-h5api-bff/subject/detail",
+                params={"subjectId": mb_id},
+                headers={"Referer": "https://h5.aoneroom.com/", "User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                d = r.json().get("data", {})
+                title = re.sub(r'\s*\[.*?\]\s*', '', d.get("title", "")).strip()
+                year = (d.get("releaseDate") or "")[:4]
+                desc = d.get("description", "")
+                cover = d.get("cover", {})
+                cover_url = cover.get("url") if isinstance(cover, dict) else None
+                genre = d.get("genre", [])
+                return JSONResponse({
+                    "meta": {
+                        "id": id,
+                        "type": type,
+                        "name": title,
+                        "releaseInfo": year,
+                        "poster": cover_url,
+                        "background": cover_url,
+                        "description": desc[:500] if desc else "",
+                        "genres": genre,
+                    }
+                })
+        except: pass
+    return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
