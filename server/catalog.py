@@ -151,11 +151,16 @@ async def handle_catalog(request: Request, type: str, catalog_id: str, config_st
         cover = item.get("cover", "")
         description = item.get("description", "")
 
-        # Clean title
-        name = title
-        for suffix in [' Hindi', ' Tamil', ' Telugu', ' Spanish', ' French', ' German', ' Arabic', ' Dubbed']:
-            if name.endswith(suffix):
-                name = name[:-len(suffix)]
+        # Clean title - remove all bracket tags and quality markers
+        import re
+        name = re.sub(r'\s*\[.*?\]\s*', '', title).strip()
+        name = re.sub(r'\s*\(.*?\)\s*$', '', name).strip()
+        # Remove quality markers
+        name = re.sub(r'\s*(CAM|HDCAM|HDTS|WEBRip|WEB-DL|BluRay|HDRip|DVDRip)\s*$', '', name, flags=re.IGNORECASE).strip()
+        # Remove common suffixes
+        for suffix in [' Hindi', ' Tamil', ' Telugu', ' Spanish', ' French', ' German', ' Arabic', ' Dubbed', ' Dual Audio']:
+            if name.lower().endswith(suffix.lower()):
+                name = name[:-len(suffix)].strip()
 
         imdb_id = await resolve_to_imdb(http_client, name, year)
         if not imdb_id:
