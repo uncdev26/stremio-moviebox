@@ -118,6 +118,21 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
     season = 1
     episode = 1
 
+    # Handle tmdb: prefix IDs from catalog
+    if imdb_id.startswith("tmdb:") or (len(parts) > 1 and parts[0] == "tmdb"):
+        tmdb_num = parts[1] if parts[0] == "tmdb" else imdb_id.replace("tmdb:", "")
+        try:
+            tmdb_type = "tv" if type == "series" else "movie"
+            tmdb_resp = await request.app.state.http_client.get(
+                f"https://api.themoviedb.org/3/{tmdb_type}/{tmdb_num}/external_ids",
+                params={"api_key": "e779f44db85aedbffe2dfcf252b372dc"},
+                timeout=10,
+            )
+            if tmdb_resp.status_code == 200:
+                imdb_id = tmdb_resp.json().get("imdb_id", "")
+        except Exception:
+            pass
+
     if type == "series" and len(parts) >= 3:
         season = int(parts[1])
         episode = int(parts[2])

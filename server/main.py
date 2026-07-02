@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.routes import router as main_router
+from server.catalog import router as catalog_router
 from server.settings import settings
 
 
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(main_router)
+app.include_router(catalog_router)
 
 
 @app.get("/")
