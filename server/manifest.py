@@ -22,7 +22,7 @@ def get_manifest() -> Manifest:
         version="1.0.0",
         name="MovieBox",
         description="Universal streaming — 1000+ movies & series from every corner of the world.",
-        resources=["stream", "catalog"],
+        resources=["stream", "catalog", "meta"],
         types=["movie", "series"],
         catalogs=[
             {"id": "moviebox_trending",     "type": "movie",  "name": "🔥 Trending"},
