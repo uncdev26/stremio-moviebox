@@ -22,7 +22,7 @@ def get_manifest() -> Manifest:
         version="1.0.0",
         name="MovieBox",
         description="Universal streaming — 1000+ movies & series from every corner of the world.",
-        resources=["stream", "catalog", "meta"],
+        resources=["stream", "catalog"],
         types=["movie", "series"],
         catalogs=[
             {"id": "moviebox_trending",     "type": "movie",  "name": "🔥 Trending"},
@@ -38,7 +38,7 @@ def get_manifest() -> Manifest:
             {"id": "moviebox_western_tv",   "type": "series", "name": "🇺🇸 Western TV"},
             {"id": "moviebox_anime",        "type": "series", "name": "🎌 Anime"},
         ],
-        idPrefixes=["tt", "mb:"],
+        idPrefixes=["tmdb_", "tt"],
         behaviorHints={
             "configurable": True,
             "configurationRequired": False,
