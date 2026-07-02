@@ -108,6 +108,23 @@
                             </div>
                         </div>
 
+                        <div class="form-group">
+                            <label>Platform</label>
+                            <div class="custom-dropdown" data-id="platform">
+                                <div class="dropdown-trigger">
+                                    <span class="dropdown-value">Auto Detect</span>
+                                    <span class="material-symbols-rounded dropdown-icon">expand_more</span>
+                                </div>
+                                <div class="dropdown-menu">
+                                    <div class="dropdown-item selected" data-value="auto">Auto Detect</div>
+                                    <div class="dropdown-item" data-value="tv">Android TV / Fire TV (Fast ~2s)</div>
+                                    <div class="dropdown-item" data-value="mobile">Mobile (Fast ~2s)</div>
+                                    <div class="dropdown-item" data-value="desktop">Desktop (Full Search ~5s)</div>
+                                </div>
+                                <input type="hidden" id="platform" value="auto">
+                            </div>
+                        </div>
+
                         <div class="form-actions">
                             <button type="button" id="installAppBtn" class="btn btn-primary">
                                 <span class="material-symbols-rounded">phone_iphone</span>

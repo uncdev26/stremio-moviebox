@@ -155,7 +155,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const config = {
             resolution: document.getElementById('resolution').value,
             language: document.getElementById('language').value,
-            layout: document.getElementById('layout').value
+            layout: document.getElementById('layout').value,
+            platform: document.getElementById('platform').value
         };
 
         const jsonStr = JSON.stringify(config);

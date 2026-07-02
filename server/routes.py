@@ -89,6 +89,10 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
 
     # Platform-aware speed optimization
     platform = detect_platform(request)
+    # Config can override auto-detection
+    config_platform = config.get("platform", "auto")
+    if config_platform and config_platform != "auto":
+        platform = config_platform
     fast_mode = platform in ("tv", "mobile")
 
     parts = id.split(":")
