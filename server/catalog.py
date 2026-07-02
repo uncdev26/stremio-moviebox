@@ -83,13 +83,28 @@ async def build_section(client, gid, item_type):
     ty = [(clean_title(i.get("title", "")), (i.get("releaseDate") or "")[:4]) for i in all_items]
     tmdb_ids = await resolve_batch(client, ty)
 
+    # Resolve TMDB IDs → IMDB IDs (so Stremio/Cinemeta can find metadata)
+    async def tmdb_to_imdb(tid):
+        try:
+            r = await client.get(f"https://api.themoviedb.org/3/movie/{tid}/external_ids",
+                params={"api_key": TMDB_API_KEY}, timeout=8)
+            if r.status_code == 200:
+                return r.json().get("imdb_id")
+        except: pass
+        return None
+
+    imdb_ids = []
+    for i in range(0, len(tmdb_ids), 20):
+        batch = tmdb_ids[i:i+20]
+        imdb_ids.extend(await asyncio.gather(*[tmdb_to_imdb(t) for t in batch]))
+
     metas = []
-    for item, tid in zip(all_items, tmdb_ids):
-        if not tid: continue
+    for item, tid, imdb in zip(all_items, tmdb_ids, imdb_ids):
+        if not imdb: continue
         cover = item.get("cover", {})
         poster = cover.get("url") if isinstance(cover, dict) else None
         metas.append({
-            "id": f"tmdb_{tid}",
+            "id": imdb,
             "type": item_type,
             "name": clean_title(item.get("title", "")),
             "poster": poster,

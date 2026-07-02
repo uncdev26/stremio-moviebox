@@ -38,7 +38,7 @@ def get_manifest() -> Manifest:
             {"id": "moviebox_western_tv",   "type": "series", "name": "🇺🇸 Western TV"},
             {"id": "moviebox_anime",        "type": "series", "name": "🎌 Anime"},
         ],
-        idPrefixes=["tmdb_", "tt"],
+        idPrefixes=["tt"],
         behaviorHints={
             "configurable": True,
             "configurationRequired": False,
