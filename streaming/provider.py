@@ -88,6 +88,20 @@ async def search_v3(title: str, year: str, is_movie: bool):
     return matches
 
 
+LANG_PATH_PATTERN = re.compile(r"-(?:hindi|tamil|telugu|malayalam|kannada|bengali|marathi|punjabi|urdu|english|french|spanish|german|italian|portuguese|japanese|korean|chinese|arabic|turkish|thai)-")
+
+def _match_score(match: dict) -> int:
+    """Score a match — higher is better.
+    Prefers clean detailPath (no language suffix) and exact title match.
+    """
+    item = match["item"]
+    detail_path = getattr(item, "detailPath", "") or ""
+    score = 0
+    # Penalize language-tagged listings (e.g. gram-chikitsalay-hindi-xxx)
+    if LANG_PATH_PATTERN.search(detail_path):
+        score -= 100
+    return score
+
 async def find_all_matches(title: str, year: str, is_movie: bool) -> list[dict]:
     results = await asyncio.gather(
         search_v2(title, year, is_movie),
@@ -97,6 +111,8 @@ async def find_all_matches(title: str, year: str, is_movie: bool) -> list[dict]:
     matches = []
     for r in results:
         matches.extend(r)
+    # Sort: prefer clean listings (no language suffix in detailPath)
+    matches.sort(key=_match_score, reverse=True)
     return matches
 
 
