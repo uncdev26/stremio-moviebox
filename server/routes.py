@@ -21,11 +21,12 @@ def parse_config(config_str: str) -> dict:
 
 
 # ─── META ENDPOINT ────────────────────────────────────────────
-@router.get("/meta/{type}/{id:path}.json")
+@router.get("/meta/{type}/{id}.json")
 async def meta_endpoint(request: Request, type: str, id: str):
-    """Return metadata for a single item. Handles tmdb_ and tt prefixes."""
+    """Return metadata for a single item."""
     try:
         import httpx as _httpx
+        TMDB_KEY = "e779f44db85aedbffe2dfcf252b372dc"
         async with _httpx.AsyncClient(timeout=_httpx.Timeout(10), follow_redirects=True) as client:
             tmdb_id = None
 
