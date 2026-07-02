@@ -102,6 +102,25 @@ def _match_score(match: dict) -> int:
         score -= 100
     return score
 
+async def find_fast_matches(title: str, year: str, is_movie: bool) -> list[dict]:
+    """Fast mode: single API (v2 only), 3 results max. ~1-2s instead of 5-15s."""
+    try:
+        s = SessionV2()
+        st = SubjectTypeV2.MOVIES if is_movie else SubjectTypeV2.TV_SERIES
+        sv = SearchV2(s, query=title, subject_type=st, per_page=3)
+        res = await sv.get_content_model()
+        matches = []
+        for item in res.items:
+            if not year or str(item.releaseDate.year) == str(year):
+                matches.append({"item": item, "session": s, "version": "v2"})
+                if len(matches) >= 2:
+                    break
+        matches.sort(key=_match_score, reverse=True)
+        return matches
+    except Exception:
+        return []
+
+
 async def find_all_matches(title: str, year: str, is_movie: bool) -> list[dict]:
     results = await asyncio.gather(
         search_v2(title, year, is_movie),

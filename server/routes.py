@@ -47,7 +47,7 @@ from streaming.helpers import (
     get_stream_filename,
 )
 from streaming.metadata import resolve_imdb_id
-from streaming.provider import extract_streams, find_all_matches
+from streaming.provider import extract_streams, find_all_matches, find_fast_matches
 
 
 @router.get("/{config}/stream/{type}/{id}.json")
@@ -69,6 +69,15 @@ async def stream_endpoint(
     return await handle_stream(request, type, id, "")
 
 
+def detect_platform(request: Request) -> str:
+    """Detect Stremio client platform from User-Agent."""
+    ua = (request.headers.get("user-agent") or "").lower()
+    if "android tv" in ua or "fire tv" in ua or "stremio/tv" in ua:
+        return "tv"
+    elif "android" in ua or "iphone" in ua or "ipad" in ua or "mobile" in ua:
+        return "mobile"
+    return "desktop"
+
 async def handle_stream(request: Request, type: str, id: str, config_str: str):
     if type not in ["movie", "series"]:
         raise HTTPException(status_code=404, detail="Unsupported type")
@@ -77,6 +86,10 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
     min_res = config.get("resolution", "all")
     pref_lang = config.get("language", "all")
     layout = config.get("layout", "cinematic")
+
+    # Platform-aware speed optimization
+    platform = detect_platform(request)
+    fast_mode = platform in ("tv", "mobile")
 
     parts = id.split(":")
     imdb_id = parts[0]
@@ -98,7 +111,11 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
     ) or re.search(r"\d{4}", str(meta.get("year", "")))
     year = year_match.group(0) if year_match else ""
 
-    matches = await find_all_matches(title, year, is_movie=(type == "movie"))
+    if fast_mode:
+        # FAST MODE: single API, fewer results, faster
+        matches = await find_fast_matches(title, year, is_movie=(type == "movie"))
+    else:
+        matches = await find_all_matches(title, year, is_movie=(type == "movie"))
 
     if not matches:
         return {"streams": []}
