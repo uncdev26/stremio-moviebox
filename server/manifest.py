@@ -13,12 +13,14 @@ class Manifest(BaseModel):
     logo: str | None = None
 
 
+RPDB_KEY = "t0-free-rpdb"
+
 def get_manifest() -> Manifest:
     return Manifest(
         id="com.moviebox.addon",
         version="1.0.0",
         name="MovieBox",
-        description="Stream movies and TV series with multiple qualities, audio languages, and subtitles.",
+        description="Universal streaming with RPDB ratings. Multi-language, multi-country, genre filter.",
         resources=["stream"],
         types=["movie", "series"],
         catalogs=[],

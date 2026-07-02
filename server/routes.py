@@ -3,7 +3,7 @@ import json
 
 from fastapi import APIRouter, Request
 
-from server.manifest import Manifest, get_manifest
+from server.manifest import Manifest, get_manifest, RPDB_KEY
 
 router = APIRouter()
 
@@ -218,6 +218,7 @@ async def handle_stream(request: Request, type: str, id: str, config_str: str):
                 "name": "MovieBox",
                 "title": desc,
                 "url": url_str,
+                "poster": f"https://api.ratingposterdb.com/{RPDB_KEY}/imdb/poster-default/{imdb_id}.jpg",
                 "behaviorHints": {
                     "notWebReady": True,
                     "filename": filename,
