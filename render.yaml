@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: stremio-moviebox
+    env: docker
+    plan: free
+    healthCheckPath: /manifest.json
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PROXY_URL
+        sync: false
