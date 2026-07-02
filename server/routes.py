@@ -21,63 +21,52 @@ def parse_config(config_str: str) -> dict:
 
 
 # ─── META ENDPOINT ────────────────────────────────────────────
-@router.get("/meta/{type}/{id}.json")
+@router.get("/meta/{type}/{id:path}.json")
 async def meta_endpoint(request: Request, type: str, id: str):
     """Return metadata for a single item. Handles tmdb_ and tt prefixes."""
-    client = request.app.state.http_client
-    tmdb_id = None
-    imdb_id = None
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=_httpx.Timeout(10), follow_redirects=True) as client:
+            tmdb_id = None
 
-    if id.startswith("tmdb_"):
-        tmdb_id = id.replace("tmdb_", "")
-    elif id.startswith("tt"):
-        imdb_id = id
+            if id.startswith("tmdb_"):
+                tmdb_id = id.replace("tmdb_", "")
+            elif id.startswith("tt"):
+                r = await client.get(f"https://api.themoviedb.org/3/find/{id}",
+                    params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "external_source": "imdb_id"},
+                    timeout=8)
+                if r.status_code == 200:
+                    results = r.json().get("movie_results", []) or r.json().get("tv_results", [])
+                    if results:
+                        tmdb_id = str(results[0]["id"])
 
-    # Resolve IMDB → TMDB if needed
-    if imdb_id and not tmdb_id:
-        try:
-            r = await client.get(f"https://api.themoviedb.org/3/find/{imdb_id}",
-                params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "external_source": "imdb_id"},
+            if not tmdb_id:
+                return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
+
+            tmdb_type = "tv" if type == "series" else "movie"
+            r = await client.get(f"https://api.themoviedb.org/3/{tmdb_type}/{tmdb_id}",
+                params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "language": "en-US"},
                 timeout=8)
             if r.status_code == 200:
-                results = r.json().get("movie_results", []) or r.json().get("tv_results", [])
-                if results:
-                    tmdb_id = str(results[0]["id"])
-        except: pass
+                d = r.json()
+                title = d.get("title") or d.get("name", "")
+                year = (d.get("release_date") or d.get("first_air_date") or "")[:4]
+                overview = d.get("overview", "")
+                poster = d.get("poster_path")
+                backdrop = d.get("backdrop_path")
+                genres = [g["name"] for g in d.get("genres", [])]
+                rating = d.get("vote_average")
 
-    if not tmdb_id:
-        return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
-
-    # Fetch details from TMDB
-    try:
-        tmdb_type = "tv" if type == "series" else "movie"
-        r = await client.get(f"https://api.themoviedb.org/3/{tmdb_type}/{tmdb_id}",
-            params={"api_key": "e779f44db85aedbffe2dfcf252b372dc", "language": "en-US"},
-            timeout=8)
-        if r.status_code == 200:
-            d = r.json()
-            title = d.get("title") or d.get("name", "")
-            year = (d.get("release_date") or d.get("first_air_date") or "")[:4]
-            overview = d.get("overview", "")
-            poster = d.get("poster_path")
-            backdrop = d.get("backdrop_path")
-            genres = [g["name"] for g in d.get("genres", [])]
-            rating = d.get("vote_average")
-
-            return JSONResponse({
-                "meta": {
-                    "id": id,
-                    "type": type,
-                    "name": title,
-                    "releaseInfo": year,
+                return JSONResponse({"meta": {
+                    "id": id, "type": type, "name": title, "releaseInfo": year,
                     "poster": f"https://image.tmdb.org/t/p/w500{poster}" if poster else None,
                     "background": f"https://image.tmdb.org/t/p/original{backdrop}" if backdrop else None,
                     "description": overview[:500] if overview else "",
                     "genres": genres,
                     "imdbRating": str(round(rating, 1)) if rating else None,
-                }
-            })
-    except: pass
+                }})
+    except Exception as e:
+        print(f"[Meta] Error: {e}")
 
     return JSONResponse({"meta": {"id": id, "type": type, "name": "Unknown"}})
 
