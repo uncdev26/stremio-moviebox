@@ -155,3 +155,44 @@ async def handle(catalog_id):
             metas = await build_section(client, SECTIONS[section]["gid"], SECTIONS[section]["type"])
             _cache[section] = metas
     return JSONResponse({"metas": metas})
+
+
+# ─── EINTHUSANTV CATALOG PROXY ──────────────────────────────
+# Proxy EinthusanTV's pre-fetched catalog, serve MovieBox streams
+
+EINTHUSAN_LANGS = {
+    "hindi": "hindi", "tamil": "tamil", "telugu": "telugu",
+    "malayalam": "malayalam", "kannada": "kannada",
+    "bengali": "bengali", "marathi": "marathi", "punjabi": "punjabi",
+}
+
+@router.get("/{config}/catalog/movie/einthusan_{lang}.json")
+async def einthusan_cat_config(request: Request, config: str, lang: str):
+    return await einthusan_catalog(request, lang)
+
+@router.get("/catalog/movie/einthusan_{lang}.json")
+async def einthusan_cat_no_config(request: Request, lang: str):
+    return await einthusan_catalog(request, lang)
+
+
+async def einthusan_catalog(request: Request, lang: str):
+    """Proxy EinthusanTV catalog — IMDB IDs, MovieBox streams."""
+    lang_key = lang.replace("_board", "").lower()
+    if lang_key not in EINTHUSAN_LANGS:
+        return JSONResponse({"metas": []})
+
+    # Fetch from EinthusanTV
+    try:
+        client = request.app.state.http_client
+        url = f"https://einthusan.asaddon.com/{lang_key}/catalog/movie/{lang_key}_board.json"
+        r = await client.get(url, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            metas = data.get("metas", [])
+            # Filter to only items with valid IMDB IDs
+            valid = [m for m in metas if m.get("id", "").startswith("tt")]
+            return JSONResponse({"metas": valid})
+    except Exception as e:
+        print(f"[Einthusan] Error: {e}")
+
+    return JSONResponse({"metas": []})
