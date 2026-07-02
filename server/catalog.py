@@ -136,27 +136,6 @@ async def startup():
     asyncio.create_task(refresh())
 
 
-@router.get("/{config}/catalog/{type}/{catalog_id}.json")
-async def cat1(request: Request, config: str, type: str, catalog_id: str):
-    return await handle(catalog_id)
-
-@router.get("/catalog/{type}/{catalog_id}.json")
-async def cat2(request: Request, type: str, catalog_id: str):
-    return await handle(catalog_id)
-
-
-async def handle(catalog_id):
-    section = catalog_id.replace("moviebox_", "")
-    if time.time() - _cache_time > 3600:
-        asyncio.create_task(refresh())
-    metas = _cache.get(section, [])
-    if not metas and not _cache and section in SECTIONS:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15), follow_redirects=True) as client:
-            metas = await build_section(client, SECTIONS[section]["gid"], SECTIONS[section]["type"])
-            _cache[section] = metas
-    return JSONResponse({"metas": metas})
-
-
 # ─── EINTHUSANTV CATALOG PROXY ──────────────────────────────
 # Proxy EinthusanTV's pre-fetched catalog, serve MovieBox streams
 
@@ -196,3 +175,25 @@ async def einthusan_catalog(request: Request, lang: str):
         print(f"[Einthusan] Error: {e}")
 
     return JSONResponse({"metas": []})
+
+@router.get("/{config}/catalog/{type}/{catalog_id}.json")
+async def cat1(request: Request, config: str, type: str, catalog_id: str):
+    return await handle(catalog_id)
+
+@router.get("/catalog/{type}/{catalog_id}.json")
+async def cat2(request: Request, type: str, catalog_id: str):
+    return await handle(catalog_id)
+
+
+async def handle(catalog_id):
+    section = catalog_id.replace("moviebox_", "")
+    if time.time() - _cache_time > 3600:
+        asyncio.create_task(refresh())
+    metas = _cache.get(section, [])
+    if not metas and not _cache and section in SECTIONS:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15), follow_redirects=True) as client:
+            metas = await build_section(client, SECTIONS[section]["gid"], SECTIONS[section]["type"])
+            _cache[section] = metas
+    return JSONResponse({"metas": metas})
+
+
